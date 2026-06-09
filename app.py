@@ -3,17 +3,17 @@ import cv2
 import numpy as np
 import mediapipe as mp
 
-# Cấu hình giao diện Streamlit rộng rãi, đẹp mắt
-st.set_page_config(page_title="AI Xem Chỉ Tay", page_icon="🔮", layout="centered")
+# Cấu hình giao diện Streamlit
+st.set_page_config(page_title="AI Xem Chỉ Tay Pro", page_icon="🔮", layout="centered")
 
-st.title("🔮 AI ĐỌC CHỈ TAY CÔNG NGHỆ CAO (STREAMLIT APP)")
-st.caption("Ứng dụng tự động phân tích độ cong, độ dài và hướng đi của các đường chỉ tay bằng AI.")
+st.title("🔮 AI ĐỌC CHỈ TAY XOAY GÓC TỰ ĐỘNG")
+st.caption("Phiên bản cấp cao: Tự động xoay góc và khớp đường cong theo mọi dáng tay.")
 
 # ==========================================
-# THUẬT TOÁN TOÁN HỌC VẼ ĐƯỜNG CONG BEZIER
+# THUẬT TOÁN VẼ ĐƯỜNG CONG XOAY THEO KHUNG XƯƠNG
 # ==========================================
-def draw_quadratic_bezier(img, p0, p1, p2, color, thickness=4):
-    """Vẽ đường cong bậc 2 qua 3 điểm điều hướng"""
+def draw_adaptive_bezier(img, p0, p1, p2, color, thickness=5):
+    """Vẽ đường cong luôn bám sát theo các khớp ngón tay"""
     t_values = np.linspace(0, 1, 30)
     points = []
     for t in t_values:
@@ -23,19 +23,8 @@ def draw_quadratic_bezier(img, p0, p1, p2, color, thickness=4):
     for i in range(len(points) - 1):
         cv2.line(img, points[i], points[i+1], color, thickness)
 
-def draw_cubic_bezier(img, p0, p1, p2, p3, color, thickness=4):
-    """Vẽ đường cong bậc 3 qua 4 điểm điều hướng (Dành cho Sinh Đạo)"""
-    t_values = np.linspace(0, 1, 30)
-    points = []
-    for t in t_values:
-        x = int((1 - t)**3 * p0[0] + 3 * (1 - t)**2 * t * p1[0] + 3 * (1 - t) * t**2 * p2[0] + t**3 * p3[0])
-        y = int((1 - t)**3 * p0[1] + 3 * (1 - t)**2 * t * p1[1] + 3 * (1 - t) * t**2 * p2[1] + t**3 * p3[1])
-        points.append((x, y))
-    for i in range(len(points) - 1):
-        cv2.line(img, points[i], points[i+1], color, thickness)
-
 # ==========================================
-# BƯỚC 3: HÀM PHÂN TÍCH HÌNH HỌC (OPENCV)
+# BƯỚC 2: PHÂN TÍCH MA TRẬN HÌNH HỌC TỪ OPENCV
 # ==========================================
 def extract_line_features(img_raw):
     img_gray = cv2.cvtColor(img_raw, cv2.COLOR_BGR2GRAY)
@@ -58,8 +47,7 @@ def extract_line_features(img_raw):
                 p_start, p_end = cnt[0][0], cnt[-1][0]
                 euclidean_dist = np.sqrt((p_start[0] - p_end[0])**2 + (p_start[1] - p_end[1])**2)
                 curvature = length / (euclidean_dist + 1e-5)
-            else:
-                curvature = 1.0
+            else: curvature = 1.0
             features[key] = {'length': length, 'curvature': curvature, 'clarity': clarity}
         else:
             features[key] = {'length': 0.0, 'curvature': 1.0, 'clarity': 0.0}
@@ -67,7 +55,6 @@ def extract_line_features(img_raw):
 
 def run_rule_engine(features):
     results = {}
-    # Sinh đạo
     life_len = features['Life_Line']['length']
     life_clar = features['Life_Line']['clarity']
     life_curv = features['Life_Line']['curvature']
@@ -75,113 +62,97 @@ def run_rule_engine(features):
     elif life_len > 220: results['Life_Line'] = 'Medium_Curved_Active' if life_curv > 1.35 else 'Medium_Straight_Stable'
     else: results['Life_Line'] = 'Short_Deep_Dense' if life_clar > 80 else 'Short_Fragile'
 
-    # Tâm đạo
     heart_curv = features['Heart_Line']['curvature']
     heart_len = features['Heart_Line']['length']
     if heart_curv > 1.55: results['Heart_Line'] = 'Extreme_Curved_Passionate'
     elif heart_curv > 1.15: results['Heart_Line'] = 'Straight_Long_Altruist' if heart_len > 280 else 'Straight_Short_Cold'
     else: results['Heart_Line'] = 'Chain_Broken_Anxious'
 
-    # Trí đạo
     head_clar = features['Head_Line']['clarity']
     head_len = features['Head_Line']['length']
     head_curv = features['Head_Line']['curvature']
     if head_len > 320: results['Head_Line'] = 'Long_Curved_Creative' if head_curv > 1.25 else 'Long_Straight_Mastermind'
     elif head_len > 180: results['Head_Line'] = 'Medium_Balanced_Adaptable'
-    else: results['Short_Material_Fast'] if head_clar > 75 else 'Short_Faint_Distracted'
+    else: results['Head_Line'] = 'Short_Material_Fast' if head_clar > 75 else 'Short_Faint_Distracted'
     return results
 
 # ==========================================
-# BƯỚC 4: GIAO DIỆN CAMERA & HIỂN THỊ STREAMLIT
+# BƯỚC 3: GIAO DIỆN CAMERA CHÍNH
 # ==========================================
-camera_image = st.camera_input("Xòe rộng lòng bàn tay của bạn trước camera và bấm Chụp:")
+camera_image = st.camera_input("Xòe tay trước camera (bạn có thể xoay nghiêng tùy ý):")
 
 if camera_image is not None:
-    # Đọc ảnh từ Streamlit sang định dạng OpenCV
     file_bytes = np.asarray(bytearray(camera_image.read()), dtype=np.uint8)
     img_bgr = cv2.imdecode(file_bytes, 1)
-    img_draw = img_bgr.copy() # Bản để vẽ đè đường cong lên
+    img_draw = img_bgr.copy()
     h, w, _ = img_bgr.shape
 
-    # Gọi MediaPipe Hands bản Python
     mp_hands = mp.solutions.hands
     with mp_hands.Hands(static_image_mode=True, max_num_hands=1, model_complexity=1) as hands:
         img_rgb = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2RGB)
         results = hands.process(img_rgb)
 
         if results.multi_hand_landmarks:
-            st.success("✅ AI đã nhận diện được khung xương tay! Đang khớp tọa độ đường cong...")
-            
+            st.success("✅ Đã khóa mục tiêu bàn tay! Đường cong tự động xoay chuyển theo góc nghiêng.")
             landmarks = results.multi_hand_landmarks[0].landmark
             
-            # Chuyển đổi tọa độ pixel
-            def get_pt(lm): return (int(lm.x * w), int(lm.y * h))
+            def get_pt(idx): return (int(landmarks[idx].x * w), int(landmarks[idx].y * h))
             
-            wrist = get_pt(landmarks[0])
-            thumb_cmc = get_pt(landmarks[1])
-            index_mcp = get_pt(landmarks[5])
-            middle_mcp = get_pt(landmarks[9])
-            ring_mcp = get_pt(landmarks[13])
-            pinky_mcp = get_pt(landmarks[17])
+            # Lấy các điểm khớp xương thực tế chống xoay lệch
+            wrist = get_pt(0)
+            thumb_cmc = get_pt(1)
+            thumb_mcp = get_pt(2)
+            index_mcp = get_pt(5)
+            middle_mcp = get_pt(9)
+            ring_mcp = get_pt(13)
+            pinky_mcp = get_pt(17)
 
-            center = (int((wrist[0] + middle_mcp[0]) / 2), int((wrist[1] + middle_mcp[1]) / 2))
-            start_joint = (int((thumb_cmc[0] + index_mcp[0]) / 2), int((thumb_cmc[1] + index_mcp[1]) / 2))
+            # Gốc khởi tạo các đường chỉ tay thực tế
+            palm_edge_center = (int((wrist[0] + pinky_mcp[0])/2), int((wrist[1] + pinky_mcp[1])/2))
+            between_index_thumb = (int((index_mcp[0] + thumb_mcp[0])/2), int((index_mcp[1] + thumb_mcp[1])/2))
 
-            # 1. Vẽ ĐƯỜNG TÂM ĐẠO (Màu đỏ) theo tỷ lệ cơ thể
-            heart_start = (int(pinky_mcp[0] * 0.8 + wrist[0] * 0.2), int(pinky_mcp[1] * 0.8 + wrist[1] * 0.2))
-            heart_end = (int((index_mcp[0] + middle_mcp[0]) / 2), int((index_mcp[1] + middle_mcp[1]) / 2))
-            heart_control = (int(ring_mcp[0] * 0.7 + wrist[0] * 0.3), int(ring_mcp[1] * 0.7 + wrist[1] * 0.3))
-            draw_quadratic_bezier(img_draw, heart_start, heart_control, heart_end, (0, 0, 255), 5) # Màu Đỏ trong BGR
+            # 1. Vẽ ĐƯỜNG TÂM ĐẠO (Đỏ) - Đi từ gốc ngón út bám qua ngón áp út sang ngón trỏ
+            draw_adaptive_bezier(img_draw, pinky_mcp, ring_mcp, index_mcp, (0, 0, 255), 5)
 
-            # 2. Vẽ ĐƯỜNG TRÍ ĐẠO (Màu xanh dương)
-            head_end = (int(pinky_mcp[0] * 0.5 + wrist[0] * 0.5), int(pinky_mcp[1] * 0.5 + wrist[1] * 0.5))
-            draw_quadratic_bezier(img_draw, start_joint, center, head_end, (255, 0, 0), 5) # Màu Xanh Dương trong BGR
+            # 2. Vẽ ĐƯỜNG TRÍ ĐẠO (Xanh dương) - Đi từ kẽ tay qua lòng bàn tay hướng về cạnh tay
+            draw_adaptive_bezier(img_draw, between_index_thumb, middle_mcp, palm_edge_center, (255, 0, 0), 5)
 
-            # 3. Vẽ ĐƯỜNG SINH ĐẠO (Màu xanh lá)
-            life_control2 = (int(thumb_cmc[0] * 0.4 + wrist[0] * 0.6), int(thumb_cmc[1] * 0.4 + wrist[1] * 0.6))
-            draw_cubic_bezier(img_draw, start_joint, center, life_control2, wrist, (0, 255, 0), 5) # Màu Xanh Lá trong BGR
+            # 3. Vẽ ĐƯỜNG SINH ĐẠO (Xanh lá) - Đi từ kẽ tay ôm trọn gò ngón cái xuống cổ tay
+            draw_adaptive_bezier(img_draw, between_index_thumb, thumb_cmc, wrist, (0, 255, 0), 5)
 
-            # Hiển thị ảnh sau khi vẽ đường cong lên Streamlit
-            st.image(cv2.cvtColor(img_draw, cv2.COLOR_BGR2RGB), caption="Mô phỏng độ cong chỉ tay của bạn", use_container_width=True)
+            # Hiển thị ảnh kết quả lên giao diện
+            st.image(cv2.cvtColor(img_draw, cv2.COLOR_BGR2RGB), caption="AI phân tích cấu trúc chỉ tay thích ứng hình học", use_container_width=True)
 
-            # Chạy trích xuất đặc trưng Canny gốc và luận giải
+            # Đọc luận giải luận tướng
             features = extract_line_features(img_bgr)
             classified = run_rule_engine(features)
 
-            # --- KHU VỰC IN KẾT QUẢ ĐÃ ĐƯỢC ĐỊNH DẠNG ĐẸP ---
-            st.markdown("## 📊 KẾT QUẢ PHÂN TÍCH CHI TIẾT")
+            st.markdown("## 📊 KẾT QUẢ DỰ ĐOÁN HÌNH DÁNG CHỈ TAY")
             
-            # Khối Sinh Đạo
+            # Sinh đạo
             st.subheader("1. 🟢 ĐƯỜNG SINH ĐẠO (Vận Mệnh & Sức Khỏe)")
             life = classified.get('Life_Line')
             if life == 'Super_Long_Vigorous':
-                st.markdown("**Dạng hình học:** Đường rất dài, nét đậm sâu. \n\n**Hướng cong:** Lượn vòng cung lớn, ôm trọn gò Kim Tinh xuống sát cổ tay. \n\n**Luận tướng:** Năng lượng dồi dào, sức khỏe bền bỉ dẻo dai.")
+                st.markdown("**Hình học:** Đường rất dài, nét sâu đậm rõ ràng.\n\n**Hướng đi:** Chạy thành một đường vòng cung lớn, ôm trọn lấy gò Kim Tinh (vùng thịt ngón cái) kéo dài sát cổ tay.\n\n**Luận tướng:** Thể lực dồi dào, tràn đầy sinh khí, có sức đề kháng bẩm sinh rất tốt.")
             elif life == 'Long_Branch_Out':
-                st.markdown("**Dạng hình học:** Đường dài, có nhánh chẻ đôi ở cuối đuôi. \n\n**Hướng cong:** Chạy hướng về phía cổ tay nhưng rẽ nhánh rõ rệt sang hướng gò Nguyệt. \n\n**Luận tướng:** Có số định cư xa quê hương, hậu vận đi lại nhiều hoặc đổi nơi ở.")
-            elif life == 'Medium_Curved_Active':
-                st.markdown("**Dạng hình học:** Chiều dài trung bình, bản rộng. \n\n**Hướng cong:** Bo cong mềm mại, mở rộng biên độ ra giữa lòng bàn tay. \n\n**Luận tướng:** Tính cách hướng ngoại, năng động, thích nghi rất tốt với xã hội.")
+                st.markdown("**Hình học:** Đường dài, phần đuôi xuất hiện nhánh chẻ.\n\n**Hướng đi:** Đường cong chạy xuống hướng cổ tay nhưng có xu hướng rẽ nhánh hướng sang vùng gò Nguyệt.\n\n**Luận tướng:** Có vận số đi xa, thích hợp phát triển sự nghiệp hoặc định cư ở nước ngoài, nơi đất khách.")
             else:
-                st.markdown("**Dạng hình học:** Đường ngắn hoặc hơi mảnh. \n\n**Hướng cong:** Chạy dốc xuống, độ cong ít ôm sát ngón cái. \n\n**Luận tướng:** Sức khỏe ở mức bình thường, cần chú ý nghỉ ngơi điều độ tránh làm việc quá sức.")
+                st.markdown("**Hình học:** Độ dài trung bình hoặc hơi ngắn.\n\n**Hướng đi:** Đường chạy dốc xuống, biên độ ôm gò ngón cái hẹp.\n\n**Luận tướng:** Cuộc sống thích hướng tới sự ổn định, an toàn, cần chú ý phân bổ thời gian làm việc để tránh lao lực.")
 
-            # Khối Tâm Đạo
+            # Tâm đạo
             st.subheader("2. 🔴 ĐƯỜNG TÂM ĐẠO (Tình Duyên & Cảm Xúc)")
             heart = classified.get('Heart_Line')
             if heart == 'Extreme_Curved_Passionate':
-                st.markdown("**Dạng hình học:** Đường siêu cong, uốn ngược sắc nét. \n\n**Hướng cong:** Vuốt cong gắt từ rìa ngón út chạy hướng thẳng lên kẽ giữa ngón trỏ và ngón giữa. \n\n**Luận tướng:** Người giàu cảm xúc, yêu ghét phân minh rõ ràng. Sống mãnh liệt nhưng đôi khi hơi chiếm hữu.")
-            elif heart == 'Straight_Long_Altruist':
-                st.markdown("**Dạng hình học:** Đường thẳng băng, kéo dài trường nét. \n\n**Hướng cong:** Cắt ngang phẳng lặng xuyên suốt đến tận vùng gò dưới ngón trỏ. \n\n**Luận tướng:** Người lý trí cao trong tình cảm, bao dung, biết hy sinh nhưng ít khi bộc lộ cảm xúc ra ngoài.")
+                st.markdown("**Hình học:** Đường siêu cong, uốn lượn mạnh mẽ.\n\n**Hướng đi:** Xuất phát từ rìa tay dưới ngón út, uốn một đường cong gắt hướng ngược lên phía kẽ ngón tay trỏ và ngón giữa.\n\n**Luận tướng:** Sống mãnh liệt, đặt nặng chuyện tình cảm, yêu ghét rõ ràng và có xu hướng che chở, chiếm hữu cao trong tình yêu.")
             else:
-                st.markdown("**Dạng hình học:** Đường ngắn, kết thúc sớm hoặc lượn sóng nhẹ. \n\n**Hướng cong:** Kết thúc ngay dưới khu vực ngón giữa. \n\n**Luận tướng:** Tâm lý thực tế, xử lý mọi chuyện bằng lý trí, đôi khi tỏ ra hơi lạnh lùng.")
+                st.markdown("**Hình học:** Đường thẳng hoặc có độ dài vừa phải.\n\n**Hướng đi:** Đường chạy cắt ngang lòng bàn tay và kết thúc ở gò dưới ngón giữa hoặc ngón trỏ.\n\n**Luận tướng:** Thuộc mẫu người lý trí, kiểm soát cảm xúc tốt, luôn giải quyết các xung đột tình cảm bằng cái đầu lạnh.")
 
-            # Khối Trí Đạo
+            # Trí đạo
             st.subheader("3. 🔵 ĐƯỜNG TRÍ ĐẠO (Tư Duy & Sự Nghiệp)")
             head = classified.get('Head_Line')
             if head == 'Long_Curved_Creative':
-                st.markdown("**Dạng hình học:** Đường dài, võng cong mềm mại. \n\n**Hướng cong:** Xuất phát từ cạnh tay, chạy dài và uốn cong hẳn xuống gò Nguyệt (đáy lòng bàn tay). \n\n**Luận tướng:** Đầu óc sáng tạo cực tốt, có thiên hướng nghệ thuật, trực giác và trí tưởng tượng phong phú.")
-            elif head == 'Long_Straight_Mastermind':
-                st.markdown("**Dạng hình học:** Đường dài, thẳng tắp như kẻ chỉ. \n\n**Hướng cong:** Cắt đôi ngang lòng bàn tay, chạy song song với đường tình duyên. \n\n**Luận tướng:** Tư duy logic vượt trội, phân tích dữ liệu sắc bén, là mẫu người mưu lược.")
+                st.markdown("**Hình học:** Đường dài, võng sâu xuôi xuống.\n\n**Hướng đi:** Khởi hành từ kẽ tay trỏ, kéo dài và uốn cong chúc hẳn xuống khu vực đáy lòng bàn tay (gò Nguyệt).\n\n**Luận tướng:** Trí tưởng tượng bay bổng, tư duy sáng tạo vượt trội, rất nhạy cảm với nghệ thuật, ngôn từ hoặc thiết kế.")
             else:
-                st.markdown("**Dạng hình học:** Chiều dài trung bình, hơi chếch nhẹ. \n\n**Hướng cong:** Điểm cuối dừng ở khoảng dưới ngón áp út. \n\n**Luận tướng:** Trí tuệ thực tiễn, khả năng ứng biến, xoay chuyển tình huống trong công việc rất nhanh chóng.")
-
+                st.markdown("**Hình học:** Đường thẳng, độ dài trung bình dứt khoát.\n\n**Hướng đi:** Chạy ngang phẳng qua lòng bàn tay, dừng lại ở khoảng dưới ngón áp út.\n\n**Luận tướng:** Tư duy thực tế, logic, khả năng giải quyết vấn đề và ứng biến với áp lực công việc vô cùng nhanh nhạy.")
         else:
-            st.warning("⚠️ Không tìm thấy bàn tay trong ảnh chụp! Bạn hãy để tay thẳng thắn, rõ ràng trước camera rồi bấm chụp lại nhé.")
+            st.warning("⚠️ Không nhận diện được bàn tay. Hãy giữ bàn tay tĩnh và rõ ràng trước ống kính camera nhé!")
